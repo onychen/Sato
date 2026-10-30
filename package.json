@@ -1,0 +1,19 @@
+{
+  "name": "sato-agent-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A small, teachable TypeScript agent runtime",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "exports": "./dist/src/index.js",
+  "bin": { "sato": "./dist/src/cli.js" },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "demo": "tsx src/cli.ts --demo --prompt demo",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "check": "npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": { "@types/node": "^22.0.0", "tsx": "^4.20.0", "typescript": "^5.9.0" }
+}
