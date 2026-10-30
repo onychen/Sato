@@ -63,6 +63,30 @@ sequenceDiagram
 
 一个 runtime 同时只允许一个 run。多会话使用多个实例，磁盘会话文件也应不同。会话只在 CLI 回合结束时保存，没有每条事件的崩溃恢复或多进程文件锁。
 
+## 错误分类与恢复
+
+`SatoError` 保留 `cause`，`errorInfo()` 只输出稳定字段。运行时错误事件在原有 `message` 之外增加 `code` / `retryable`；工具失败结果可带同结构的 `error`，旧的 `isError` / `content` 仍然可用。
+
+| 错误码 | 行为 |
+| --- | --- |
+| `MODEL_HTTP` | 带 HTTP status；401/403 提示检查权限，429/5xx 标记可能可重试 |
+| `MODEL_NETWORK` | 建连失败或流读取中断，保留原因；不自动重放请求 |
+| `MODEL_PROTOCOL` | 空响应、损坏事件、非法调用 ID、SSE JSON/完整性/帧大小错误；停止且不提交半包 |
+| `REQUEST_TIMEOUT` | 包括 provider 自行吞掉取消后静默结束的情况；停止且不提交响应 |
+| `TOOL_NOT_FOUND` / `TOOL_INPUT` | 工具不存在或参数验证失败；配对回填 |
+| `PERMISSION_DENIED` / `TOOL_HOOK` | 授权未通过、beforeTool 阻断或失败；配对回填 |
+| `TOOL_EXECUTION` / `TOOL_TIMEOUT` | 执行异常、返回值不是字符串或超时；不自动重试副作用 |
+| `CANCELLED` | 工具取消或调用者提前关闭迭代器时补齐结果；用户取消结束本轮 |
+| `CONTEXT_BUDGET` | 当前回合过大，停止，需调整预算或新建会话 |
+| `SESSION_READ` / `SESSION_WRITE` | 明确文件与操作，保留底层 cause；CLI 非零退出 |
+| `RUNTIME_ERROR` | 未分类错误；仍走 error → stop，不伪装为完成 |
+
+`retryable` 只表示故障可能是暂时的。调用方仍要根据工具副作用和已提交历史决定如何恢复，不能直接重复整个用户回合。已有工具调用成功、下一次模型请求失败时，已完成结果保留在历史中。
+
+会话与文件编辑使用同目录临时文件写完后重命名。提交之前写入或取消失败，不会截断旧文件；失败后尝试删除临时文件。如果清理也失败，会把两次错误保留在 cause 中。原子替换并不提供断电持久性保证、事务回滚或多进程冲突控制。新文件创建仍可能在底层写入失败后留下未完成的新文件，需检查工具反馈与文件状态。
+
+CLI 初始化时验证工作区，损坏会话不静默重置。终端 EOF 会取消正在进行的回合，空闲 Ctrl+C 中止等待输入；保存失败单独显示持久化错误，并不把模型输出已经显示当作保存成功。
+
 ## 添加工具
 
 实现 `Tool`：提供名称、描述、JSON Schema、`readOnly`、`parse()`、`execute()`，然后把它放到 `RuntimeOptions.tools` 中。

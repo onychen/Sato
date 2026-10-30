@@ -1,9 +1,10 @@
+import type { ErrorInfo } from './errors.js';
 /** Runtime 内部协议与厂商 API 无关；只有 provider 负责转换。 */
 export type ToolCall = { id: string; name: string; input: unknown };
 export type Message =
   | { role: 'user'; content: string }
   | { role: 'assistant'; content: string; toolCalls: ToolCall[] }
-  | { role: 'tool'; callId: string; content: string; isError: boolean };
+  | { role: 'tool'; callId: string; content: string; isError: boolean; error?: ErrorInfo };
 export type ToolSpec = { name: string; description: string; inputSchema: Record<string, unknown> };
 export type ModelEvent =
   | { type: 'text'; text: string }
@@ -28,7 +29,7 @@ export type RuntimeEvent =
   | { type: 'tool_start'; call: ToolCall }
   | { type: 'tool_result'; result: ToolResult }
   | { type: 'context_trimmed'; removed: number }
-  | { type: 'error'; message: string }
+  | ({ type: 'error' } & ErrorInfo)
   | { type: 'stop'; reason: StopReason };
 export interface Hooks {
   /** 返回字符串可阻断工具；扩展代码应视为可信程序。 */

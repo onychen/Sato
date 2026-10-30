@@ -49,3 +49,40 @@ test('SSE parser refuses truncated frames', async () => {
   const body = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode('data: {}')); c.close(); } });
   await assert.rejects(async () => { for await (const _ of parseSSE(body)) { /* consume */ } }, /Incomplete/);
 });
+
+test('HTTP errors expose status/retryability, never auto retry or leak response body', async t => {
+  let status = 401;
+  let requests = 0;
+  const server = createServer((_req, res) => {
+    requests++;
+    res.writeHead(status);
+    res.end('sensitive upstream diagnostic');
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); }));
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  const provider = new AnthropicProvider({ apiKey: 'test-key', model: 'test-model', baseUrl: `http://127.0.0.1:${address.port}` });
+  for (const [code, retryable] of [[401, false], [429, true], [503, true]] as const) {
+    status = code;
+    await assert.rejects(async () => {
+      for await (const _ of provider.stream({ system: '', messages: [], tools: [], signal: new AbortController().signal })) {}
+    }, (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.doesNotMatch(error.message, /sensitive/);
+      assert.equal(Reflect.get(error, 'code'), 'MODEL_HTTP');
+      assert.equal(Reflect.get(error, 'status'), code);
+      assert.equal(Reflect.get(error, 'retryable'), retryable);
+      return true;
+    });
+  }
+  assert.equal(requests, 3);
+});
+
+test('broken network streams produce MODEL_NETWORK while malformed JSON is MODEL_PROTOCOL', async () => {
+  const network = new ReadableStream<Uint8Array>({ start(c) { c.error(new Error('socket reset')); } });
+  await assert.rejects(async () => { for await (const _ of parseSSE(network)) {} }, { code: 'MODEL_NETWORK' });
+  const invalid = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode('data: {broken}\n\n')); c.close(); } });
+  await assert.rejects(async () => { for await (const _ of parseSSE(invalid)) {} }, { code: 'MODEL_PROTOCOL' });
+});

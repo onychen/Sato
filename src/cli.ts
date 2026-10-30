@@ -9,6 +9,8 @@ import { DemoProvider } from './providers/demo.js';
 import { createFileTools } from './tools/files.js';
 import { loadSession, saveSession } from './session.js';
 import type { PermissionMode } from './permissions.js';
+import { stat } from 'node:fs/promises';
+import { errorInfo } from './errors.js';
 
 async function main() {
   const { values } = parseArgs({ options: {
@@ -33,6 +35,7 @@ async function main() {
   const mode = values.mode ?? 'ask';
   if (!['ask', 'read-only', 'allow-write'].includes(mode)) throw new Error('Invalid --mode');
   const workspace = path.resolve(values.workspace ?? '.');
+  if (!(await stat(workspace)).isDirectory()) throw new Error('Workspace must be a directory');
   const sessionFile = path.resolve(values.session ?? path.join(workspace, '.sato/session.json'));
   const provider = values.demo ? new DemoProvider() : new AnthropicProvider({
     apiKey: process.env.ANTHROPIC_API_KEY ?? '',
@@ -46,7 +49,9 @@ async function main() {
   let closed = false;
   terminal?.on('close', () => { closed = true; });
   let active: AbortController | undefined;
-  const interrupt = () => { if (active) active.abort(); else { terminal?.close(); process.exitCode = 130; } };
+  const idle = new AbortController();
+  terminal?.on('close', () => { idle.abort(); active?.abort(); });
+  const interrupt = () => { if (active) active.abort(); else { process.exitCode = 130; idle.abort(); terminal?.close(); } };
   process.on('SIGINT', interrupt);
   terminal?.on('SIGINT', interrupt);
   const runtime = new AgentRuntime({
@@ -68,7 +73,7 @@ async function main() {
           case 'tool_start': console.error(`\n[tool] ${event.call.name}`); break;
           case 'tool_result': console.error(event.result.isError ? `[tool error] ${event.result.content}` : '[tool done]'); break;
           case 'context_trimmed': console.error(`[context] 请求视图移除 ${event.removed} 条旧消息`); break;
-          case 'error': console.error(`\n[error] ${event.message}`); break;
+          case 'error': console.error(`\n[${event.code}] ${event.message}`); break;
           case 'stop':
             console.error(`\n[stop] ${event.reason}`);
             if (values.prompt !== undefined && event.reason !== 'complete') process.exitCode = event.reason === 'cancelled' ? 130 : 1;
@@ -85,7 +90,9 @@ async function main() {
       if (!terminal) throw new Error('Non-interactive input requires --prompt');
       console.log('Sato · 输入 /exit 退出，Ctrl+C 取消当前回合');
       while (!closed) {
-        const prompt = await terminal.question('\nsato> ');
+        let prompt: string;
+        try { prompt = await terminal.question('\nsato> ', { signal: idle.signal }); }
+        catch (error) { if (idle.signal.aborted) break; throw error; }
         if (prompt.trim() === '/exit') break;
         if (prompt.trim()) await run(prompt);
       }
@@ -93,4 +100,4 @@ async function main() {
   } finally { terminal?.close(); process.off('SIGINT', interrupt); }
 }
 
-main().catch(error => { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; });
+main().catch(error => { const info = errorInfo(error); console.error(`[${info.code}] ${info.message}`); process.exitCode = 1; });

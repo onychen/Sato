@@ -1,6 +1,7 @@
 import { lstat, open, readdir, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Tool, ToolContext } from '../types.js';
+import { atomicReplace } from '../storage.js';
 
 const MAX_BYTES = 1_048_576;
 const protectedName = (name: string) => ['.git', '.sato', 'node_modules'].includes(name.toLowerCase()) || name.toLowerCase().startsWith('.env');
@@ -90,7 +91,8 @@ export function createFileTools(): Tool[] {
       const updated = original.replace(input.old_text, () => input.new_text!);
       if (Buffer.byteLength(updated) > MAX_BYTES) throw new Error('Content too large');
       ctx.signal.throwIfAborted();
-      await writeFile(target, updated, { encoding: 'utf8', signal: ctx.signal });
+      const stat = await lstat(target);
+      await atomicReplace(target, updated, { signal: ctx.signal, mode: stat.mode & 0o777 });
       return 'File edited';
     }),
   ];
