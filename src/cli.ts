@@ -39,6 +39,9 @@ async function main() {
     model: values.model ?? process.env.SATO_MODEL ?? 'claude-sonnet-4-5',
     ...(process.env.SATO_BASE_URL ? { baseUrl: process.env.SATO_BASE_URL } : {}),
   });
+  const history = values.resume ? await loadSession(sessionFile, workspace) : [];
+  const maxTurns = values['max-turns'] ? Number(values['max-turns']) : 12;
+  if (!Number.isSafeInteger(maxTurns) || maxTurns < 1) throw new Error('Invalid --max-turns');
   const terminal = stdin.isTTY ? createInterface({ input: stdin, output: stdout }) : undefined;
   let closed = false;
   terminal?.on('close', () => { closed = true; });
@@ -48,8 +51,7 @@ async function main() {
   terminal?.on('SIGINT', interrupt);
   const runtime = new AgentRuntime({
     provider, tools: createFileTools(), workspace, mode: mode as PermissionMode,
-    ...(values.resume ? { history: await loadSession(sessionFile, workspace) } : {}),
-    ...(values['max-turns'] ? { maxTurns: Number(values['max-turns']) } : {}),
+    history, maxTurns,
     confirm: async (call, signal) => {
       if (!terminal) return false;
       console.log(`\n请求写入：${call.name} ${JSON.stringify(call.input)}`);

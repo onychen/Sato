@@ -11,14 +11,14 @@ const inside = (root: string, target: string) => {
 
 /** 拒绝越界、链接和 Windows alternate data stream。父目录必须已存在。 */
 export async function resolveWorkspacePath(workspace: string, name: string): Promise<string> {
-  if (!name || name.includes('\0') || name.includes(':')) throw new Error('Invalid workspace-relative path');
+  if (!name || path.isAbsolute(name) || name.includes('\0') || name.includes(':')) throw new Error('Invalid workspace-relative path');
   const root = await realpath(workspace);
   const target = path.resolve(root, name);
   if (!inside(root, target)) throw new Error('Path escapes workspace');
   const parts = path.relative(root, target).split(path.sep).filter(Boolean);
   let current = root;
   for (const [i, part] of parts.entries()) {
-    if (protectedName(part) || /[. ]$/.test(part)) throw new Error('Protected path');
+    if (protectedName(part) || /[. ]$/.test(part) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part)) throw new Error('Protected path');
     current = path.join(current, part);
     try {
       const stat = await lstat(current);

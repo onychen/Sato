@@ -14,7 +14,7 @@ test('file tools enforce boundaries, unique edits and exclusive creation', async
     const tool = tools.find(t => t.name === name)!;
     return tool.execute(tool.parse(input), ctx);
   };
-  for (const name of ['../outside', '.git/config', '.env', '.sato/session.json', 'file:secret', 'file.']) await assert.rejects(resolveWorkspacePath(root, name));
+  for (const name of ['../outside', '.git/config', '.env', '.sato/session.json', 'file:secret', 'file.', 'CON.txt', path.join(root, 'absolute.txt')]) await assert.rejects(resolveWorkspacePath(root, name));
   await assert.rejects(run('read_file', { path: '.', extra: 'bad' }));
   await run('write_file', { path: 'hello.txt', content: 'one one' });
   await assert.rejects(run('write_file', { path: 'hello.txt', content: 'overwrite' }));
