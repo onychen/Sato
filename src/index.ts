@@ -7,3 +7,4 @@ export * from './session.js';
 export * from './tools/files.js';
 export * from './providers/demo.js';
 export * from './providers/anthropic.js';
+export * from './providers/deepseek.js';

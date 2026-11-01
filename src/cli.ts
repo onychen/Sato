@@ -5,6 +5,7 @@ import { stdin, stdout } from 'node:process';
 import path from 'node:path';
 import { AgentRuntime } from './runtime.js';
 import { AnthropicProvider } from './providers/anthropic.js';
+import { DeepSeekProvider } from './providers/deepseek.js';
 import { DemoProvider } from './providers/demo.js';
 import { createFileTools } from './tools/files.js';
 import { loadSession, saveSession } from './session.js';
@@ -17,7 +18,7 @@ async function main() {
     demo: { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
     prompt: { type: 'string', short: 'p' }, workspace: { type: 'string', short: 'w' },
     mode: { type: 'string' }, session: { type: 'string' }, resume: { type: 'boolean' },
-    model: { type: 'string' }, 'max-turns': { type: 'string' },
+    model: { type: 'string' }, provider: { type: 'string' }, 'max-turns': { type: 'string' },
   } });
   if (values.help) {
     console.log(`Sato — TypeScript 教学 Agent Runtime
@@ -27,8 +28,9 @@ async function main() {
   --workspace, -w <dir>                   工作区，默认当前目录
   --mode ask|read-only|allow-write        默认 ask；非交互时拒绝未获批准的写入
   --session <file> --resume               保存/恢复会话（默认 .sato/session.json）
-  --model <id> --max-turns <n>            模型 ID / 最大模型请求次数
-环境变量：ANTHROPIC_API_KEY、SATO_MODEL、SATO_BASE_URL
+  --provider anthropic|deepseek            模型服务商，默认 anthropic
+  --model <id> --max-turns <n>              模型 ID / 最大模型请求次数
+环境变量：SATO_PROVIDER、ANTHROPIC_API_KEY、DEEPSEEK_API_KEY、SATO_MODEL、SATO_BASE_URL
 交互命令：/exit。Ctrl+C 取消当前回合；空闲时退出。`);
     return;
   }
@@ -37,11 +39,19 @@ async function main() {
   const workspace = path.resolve(values.workspace ?? '.');
   if (!(await stat(workspace)).isDirectory()) throw new Error('Workspace must be a directory');
   const sessionFile = path.resolve(values.session ?? path.join(workspace, '.sato/session.json'));
-  const provider = values.demo ? new DemoProvider() : new AnthropicProvider({
-    apiKey: process.env.ANTHROPIC_API_KEY ?? '',
-    model: values.model ?? process.env.SATO_MODEL ?? 'claude-sonnet-4-5',
-    ...(process.env.SATO_BASE_URL ? { baseUrl: process.env.SATO_BASE_URL } : {}),
-  });
+  const providerName = values.provider ?? process.env.SATO_PROVIDER ?? 'anthropic';
+  if (!['anthropic', 'deepseek'].includes(providerName)) throw new Error('Invalid --provider; use anthropic or deepseek');
+  const provider = values.demo ? new DemoProvider() : providerName === 'deepseek'
+    ? new DeepSeekProvider({
+      apiKey: process.env.DEEPSEEK_API_KEY ?? '',
+      model: values.model ?? process.env.SATO_MODEL ?? 'deepseek-flash',
+      ...(process.env.SATO_BASE_URL ? { baseUrl: process.env.SATO_BASE_URL } : {}),
+    })
+    : new AnthropicProvider({
+      apiKey: process.env.ANTHROPIC_API_KEY ?? '',
+      model: values.model ?? process.env.SATO_MODEL ?? 'claude-sonnet-4-5',
+      ...(process.env.SATO_BASE_URL ? { baseUrl: process.env.SATO_BASE_URL } : {}),
+    });
   const history = values.resume ? await loadSession(sessionFile, workspace) : [];
   const maxTurns = values['max-turns'] ? Number(values['max-turns']) : 12;
   if (!Number.isSafeInteger(maxTurns) || maxTurns < 1) throw new Error('Invalid --max-turns');

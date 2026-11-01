@@ -29,7 +29,7 @@ npx tsx examples/basic.ts      # 在代码中使用 runtime
 
 ## 使用真实模型
 
-内置 Anthropic Messages API 流式适配器。准备你账号可用的模型 ID；示例 ID 可通过参数覆盖。
+内置 Anthropic Messages API 与 DeepSeek Chat Completions 流式适配器。准备对应 API Key 和模型 ID；示例 ID 可通过参数覆盖。
 
 PowerShell：
 
@@ -40,6 +40,15 @@ npm run dev -- --prompt '阅读 README，解释这个项目的结构' --mode rea
 npm run dev                   # 交互会话
 ```
 
+使用 DeepSeek 时，将服务商设为 `deepseek`，并配置 `DEEPSEEK_API_KEY`。PowerShell 示例：
+
+```powershell
+$env:SATO_PROVIDER = 'deepseek'
+$env:DEEPSEEK_API_KEY = '你的密钥'
+$env:SATO_MODEL = 'deepseek-flash'
+npm run dev -- --prompt '阅读 README，解释这个项目的结构' --mode read-only
+```
+
 macOS / Linux：
 
 ```sh
@@ -48,7 +57,7 @@ export SATO_MODEL='你账号可用的模型ID'
 npm run dev -- --prompt '阅读 README，解释这个项目的结构' --mode read-only
 ```
 
-也可复制 `.env.example` 为 `.env`，构建后通过 `node --env-file=.env dist/src/cli.js` 启动。Sato 不自动读取 `.env`。`SATO_BASE_URL` 可指定兼容代理的基础地址，适配器会追加 `/v1/messages`。密钥会发送给该地址，请只使用你信任的服务。
+也可复制 `.env.example` 为 `.env`，设置 `SATO_PROVIDER=deepseek`、`DEEPSEEK_API_KEY` 和 `SATO_MODEL=deepseek-flash`，构建后通过 `node --env-file=.env dist/src/cli.js` 启动。Sato 不自动读取 `.env`。`SATO_BASE_URL` 可指定 API 基础地址：Anthropic 适配器追加 `/v1/messages`，DeepSeek 适配器追加 `/chat/completions`。密钥会发送给该地址，请只使用你信任的服务。
 
 ```sh
 npm run dev -- --workspace ./my-project --mode ask
@@ -63,7 +72,7 @@ CLI 每次用户回合结束后保存会话；`--resume` 显式加载，且必�
 | 能力 | 教学实现 |
 | --- | --- |
 | Agent loop | `AsyncGenerator<RuntimeEvent>`；无工具调用时结束 |
-| 模型解耦 | `ModelProvider.stream()`；内置离线模型与 Anthropic SSE |
+| 模型解耦 | `ModelProvider.stream()`；内置离线模型、Anthropic SSE 与 DeepSeek SSE |
 | 工具系统 | 显式注册、JSON Schema 描述、运行时参数验证 |
 | 权限 | `ask`、`read-only`、`allow-write`；默认拒绝未确认写入 |
 | 扩展点 | `beforeTool` 阻断、`afterTool` 观察 |
@@ -101,6 +110,7 @@ src/
   tools/files.ts        文件工具与路径边界
   providers/demo.ts     无密钥演示
   providers/anthropic.ts 厂商协议转换与 SSE 解析
+  providers/deepseek.ts  DeepSeek Chat Completions 转换与 SSE
   session.ts            会话持久化
   cli.ts                交互、输出、取消与确认
   index.ts              公共导出
@@ -111,7 +121,7 @@ docs/                   架构、参考映射和练习
 
 继续阅读 [架构与执行契约](docs/architecture.md)、[参考实现映射](docs/references.md) 和 [练习](docs/exercises.md)。
 
-本地验证包含真实 HTTP 流模拟，不需要真实密钥；真实 Anthropic 账户端到端调用需自行配置密钥后运行。CI 配置覆盖 Windows/Linux 和 Node.js 22/24。
+本地验证包含真实 HTTP 流模拟，不需要真实密钥；真实 Anthropic 或 DeepSeek 账户端到端调用需自行配置密钥后运行。CI 配置覆盖 Windows/Linux 和 Node.js 22/24。
 
 ## 错误处理
 
